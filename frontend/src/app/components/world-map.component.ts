@@ -68,8 +68,16 @@ export class WorldMapComponent implements OnInit, OnDestroy {
     private mouse = new THREE.Vector2();
 
     // Maps to track 3D meshes to their Human IDs 
-    private humanMeshes: Map<string, THREE.Mesh> = new Map();
+    private humanMeshes: Map<string, THREE.Group | THREE.Mesh> = new Map();
     private targetPositions: Map<string, THREE.Vector3> = new Map();
+
+    private hashCode(s: string): number {
+        let hash = 0;
+        for (let i = 0; i < s.length; i++) {
+            hash = Math.imul(31, hash) + s.charCodeAt(i) | 0;
+        }
+        return hash;
+    }
 
     ngOnInit() {
         this.initThreeJS();
@@ -175,8 +183,10 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         const buildingMat = new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.4 });
         const highlightMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe, wireframe: true });
 
+        const colors = [0x222233, 0x332233, 0x223333, 0x333344, 0x443333, 0x2a3b4c, 0x3e2723, 0x1b5e20];
+
         // Creating random skyscrapers around the playable boundary
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < 60; i++) {
             // Random position, avoiding the middle 100x100 area
             let x = (Math.random() - 0.5) * 180;
             let z = (Math.random() - 0.5) * 180;
@@ -187,21 +197,48 @@ export class WorldMapComponent implements OnInit, OnDestroy {
                 z = z > 0 ? z + 50 : z - 50;
             }
 
-            const width = 5 + Math.random() * 10;
-            const depth = 5 + Math.random() * 10;
-            const height = 10 + Math.random() * 40;
+            const width = 6 + Math.random() * 8;
+            const depth = 6 + Math.random() * 8;
+            const baseHeight = 10 + Math.random() * 20;
 
-            const geometry = new THREE.BoxGeometry(width, height, depth);
-            const bldg = new THREE.Mesh(geometry, buildingMat);
-            bldg.position.set(x, height / 2, z);
-            bldg.castShadow = true;
-            bldg.receiveShadow = true;
-            this.scene.add(bldg);
+            const bldgColor = colors[Math.floor(Math.random() * colors.length)];
+            const bldgMat = new THREE.MeshStandardMaterial({ color: bldgColor, roughness: 0.6 });
+
+            const baseGeo = new THREE.BoxGeometry(width, baseHeight, depth);
+            const base = new THREE.Mesh(baseGeo, bldgMat);
+            base.position.set(x, baseHeight / 2, z);
+            base.castShadow = true;
+            base.receiveShadow = true;
+            this.scene.add(base);
 
             // Add cool wireframe edges for cyberpunk feel
-            const edges = new THREE.EdgesGeometry(geometry);
-            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.3 }));
-            bldg.add(line);
+            const edges = new THREE.EdgesGeometry(baseGeo);
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.15 }));
+            base.add(line);
+
+            // Add a tower / top section 60% of the time to give a structured look
+            if (Math.random() > 0.4) {
+                const towerHeight = 10 + Math.random() * 25;
+                const towerGeo = new THREE.BoxGeometry(width * 0.7, towerHeight, depth * 0.7);
+                const tower = new THREE.Mesh(towerGeo, bldgMat);
+                tower.position.set(x, baseHeight + towerHeight / 2, z);
+                tower.castShadow = true;
+                tower.receiveShadow = true;
+                this.scene.add(tower);
+
+                const tEdges = new THREE.EdgesGeometry(towerGeo);
+                const tLine = new THREE.LineSegments(tEdges, new THREE.LineBasicMaterial({ color: 0xff0044, transparent: true, opacity: 0.15 }));
+                tower.add(tLine);
+
+                // Antenna
+                if (Math.random() > 0.5) {
+                    const antGeo = new THREE.CylinderGeometry(0.2, 0.2, 5);
+                    const antMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe });
+                    const ant = new THREE.Mesh(antGeo, antMat);
+                    ant.position.set(x, baseHeight + towerHeight + 2.5, z);
+                    this.scene.add(ant);
+                }
+            }
         }
 
         // Create explicit Points of Interest
@@ -241,28 +278,73 @@ export class WorldMapComponent implements OnInit, OnDestroy {
             const newTarget = new THREE.Vector3(targetX, 1, targetZ); // Y=1 so they walk above ground
 
             if (!this.humanMeshes.has(h.id)) {
-                // --- Create new 3D Human (A simple capsule/cylinder for now) ---
-                const geometry = new THREE.CapsuleGeometry(0.5, 1.5, 4, 8);
+                // --- Create new 3D Human with distinct faces and clothes ---
+                const group = new THREE.Group();
+                group.position.copy(newTarget);
+                group.userData = { id: h.id }; // Attach ID for raycaster clicks
 
-                // Yellow for AI, Cyan for Player
-                const color = h.isPlayerControlled ? 0x00f2fe : 0xffd93d;
-                const material = new THREE.MeshStandardMaterial({
-                    color: color,
-                    emissive: color,
-                    emissiveIntensity: 0.5
-                });
+                const hash = this.hashCode(h.id);
+                // Random deterministic apparel and skin
+                const skinTones = [0xffcc99, 0x8d5524, 0xc68642, 0xe0ac69, 0xf1c27d];
+                const shirtColors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff, 0xffffff, 0x222222, 0x8844ff];
+                const pantColors = [0x111155, 0x222222, 0x554433, 0x335533, 0xffffff];
 
-                const mesh = new THREE.Mesh(geometry, material);
-                mesh.position.copy(newTarget);
-                mesh.castShadow = true;
-                mesh.userData = { id: h.id }; // Attach ID for raycaster clicks
+                const skinColor = skinTones[Math.abs(hash) % skinTones.length];
+                const shirtColor = shirtColors[Math.abs(hash * 2) % shirtColors.length];
+                const pantColor = pantColors[Math.abs(hash * 3) % pantColors.length];
+
+                const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.4 });
+                const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.8 });
+                const pantMat = new THREE.MeshStandardMaterial({ color: pantColor, roughness: 0.9 });
+
+                // Construct Body Parts
+                const headGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+                const head = new THREE.Mesh(headGeo, skinMat);
+                head.position.y = 1.3 + 0.4;
+                head.castShadow = true;
+
+                // Eyes (face)
+                const eyeGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+                const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+                leftEye.position.set(-0.2, 0.1, 0.41);
+                const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+                rightEye.position.set(0.2, 0.1, 0.41);
+                head.add(leftEye, rightEye);
+
+                const torsoGeo = new THREE.BoxGeometry(0.9, 1.2, 0.5);
+                const torso = new THREE.Mesh(torsoGeo, shirtMat);
+                torso.position.y = 0.6 + 0.6;
+                torso.castShadow = true;
+
+                const legGeo = new THREE.BoxGeometry(0.4, 0.8, 0.4);
+                const leftLeg = new THREE.Mesh(legGeo, pantMat);
+                leftLeg.position.set(-0.25, -0.6 - 0.4, 0); // Relative to Torso
+                leftLeg.castShadow = true;
+                const rightLeg = new THREE.Mesh(legGeo, pantMat);
+                rightLeg.position.set(0.25, -0.6 - 0.4, 0);
+                rightLeg.castShadow = true;
+                torso.add(leftLeg, rightLeg);
+
+                group.add(head, torso);
+
+                // Player Indicator
+                if (h.isPlayerControlled) {
+                    const markerGeo = new THREE.ConeGeometry(0.4, 0.8, 4);
+                    const markerMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe });
+                    const marker = new THREE.Mesh(markerGeo, markerMat);
+                    marker.rotation.x = Math.PI;
+                    marker.position.y = 2.5;
+                    group.add(marker);
+                }
 
                 // Give them a tiny point light so they glow on the floor!
-                const glow = new THREE.PointLight(color, 2, 5);
-                mesh.add(glow);
+                const glow = new THREE.PointLight(shirtColor, 0.8, 4);
+                glow.position.y = 1;
+                group.add(glow);
 
-                this.scene.add(mesh);
-                this.humanMeshes.set(h.id, mesh);
+                this.scene.add(group);
+                this.humanMeshes.set(h.id, group);
                 this.targetPositions.set(h.id, newTarget);
             } else {
                 // --- Update Target Position for Interpolation ---
@@ -280,14 +362,22 @@ export class WorldMapComponent implements OnInit, OnDestroy {
 
         // Raycast from camera to scene
         this.raycaster.setFromCamera(this.mouse, this.camera);
-        // Only check intersections against Human Meshes
-        const intersects = this.raycaster.intersectObjects(Array.from(this.humanMeshes.values()));
+        // Only check intersections against Human Meshes. Pass true to check children of groups.
+        const intersects = this.raycaster.intersectObjects(Array.from(this.humanMeshes.values()), true);
 
         if (intersects.length > 0) {
-            const clickedId = intersects[0].object.userData['id'];
-            const hum = this.humans.find(h => h.id === clickedId);
-            if (hum) {
-                this.selectedHuman = hum;
+            // Because humans are Groups, climb up the parent tree until we find the group with the userData id
+            let object: THREE.Object3D | null = intersects[0].object;
+            while (object && !object.userData['id']) {
+                object = object.parent;
+            }
+
+            if (object && object.userData['id']) {
+                const clickedId = object.userData['id'];
+                const hum = this.humans.find(h => h.id === clickedId);
+                if (hum) {
+                    this.selectedHuman = hum;
+                }
             }
         }
     }
