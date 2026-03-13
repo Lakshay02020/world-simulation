@@ -1,0 +1,107 @@
+<div class="dashboard-container">
+
+  <header class="dashboard-header glass-panel">
+    <div>
+      <h1 class="glow-title">SIMULATION ENGINE: <span class="accent">LIVE</span></h1>
+      <p class="subtitle">Phase 2: Live Spectator View Mode (Polling @ 1tick / sec)</p>
+    </div>
+
+    <div class="status-indicator">
+      <div *ngIf="connectionError()" class="status-dot offline-dot"></div>
+      <div *ngIf="!connectionError()" class="status-dot online-dot"></div>
+      <span>{{ connectionError() ? 'Backend Offline' : 'Engine Connected' }}</span>
+    </div>
+  </header>
+
+  <main class="content-area">
+
+    <!-- Error State -->
+    <div *ngIf="connectionError()" class="glass-panel error-panel">
+      <h3>⚠️ Connection Error</h3>
+      <p>{{ connectionError() }}</p>
+      <small>Run <code>mvnw spring-boot:run</code> on your Java backend.</small>
+    </div>
+
+    <!-- World Map View -->
+    <div class="glass-panel world-map-container" *ngIf="!connectionError()">
+      <h3>🌍 LIVE WORLD MAP</h3>
+      <app-world-map></app-world-map>
+    </div>
+
+    <!-- Live Entities Grid -->
+    <div class="entities-grid" *ngIf="!connectionError()">
+
+      <div class="entity-card glass-panel" *ngFor="let human of humans()">
+
+        <div class="card-header">
+          <div class="avatar-placeholder">
+            {{ human.firstName.charAt(0) }}{{ human.lastName.charAt(0) }}
+          </div>
+          <div class="identity">
+            <h2>{{ human.firstName }} {{ human.lastName }}</h2>
+            <div class="control-badge" [class.ai-controlled]="!human.isPlayerControlled">
+              {{ human.isPlayerControlled ? 'PLAYER' : 'AUTOPILOT (AI)' }}
+            </div>
+          </div>
+          <div class="wealth">
+            <span class="money-icon">💰</span> ${{ human.moneyBalance | number:'1.2-2' }}
+          </div>
+        </div>
+
+        <div class="action-banner" [class.active-action]="human.currentAction">
+          <div class="action-label">CURRENT STATUS</div>
+          <div class="action-text">
+            {{ human.currentAction ? '► ' + human.currentAction.name : 'IDLING / WANDERING' }}
+          </div>
+        </div>
+
+        <div class="stats-section">
+
+          <!-- Hunger -->
+          <div class="stat-row">
+            <div class="stat-label">Hunger <span class="stat-num">{{ formatStat(human.needHunger) }}%</span></div>
+            <div class="stat-bar-bg">
+              <div class="stat-bar-fill" [style.width.%]="human.needHunger"
+                [style.background-color]="getStatBarColor(human.needHunger)">
+              </div>
+            </div>
+          </div>
+
+          <!-- Energy -->
+          <div class="stat-row">
+            <div class="stat-label">Energy <span class="stat-num">{{ formatStat(human.needEnergy) }}%</span></div>
+            <div class="stat-bar-bg">
+              <div class="stat-bar-fill" [style.width.%]="human.needEnergy"
+                [style.background-color]="getStatBarColor(human.needEnergy)">
+              </div>
+            </div>
+          </div>
+
+          <!-- Social -->
+          <div class="stat-row">
+            <div class="stat-label">Social <span class="stat-num">{{ formatStat(human.needSocial) }}%</span></div>
+            <div class="stat-bar-bg">
+              <div class="stat-bar-fill" [style.width.%]="human.needSocial"
+                [style.background-color]="getStatBarColor(human.needSocial)">
+              </div>
+            </div>
+          </div>
+
+          <!-- Fun -->
+          <div class="stat-row">
+            <div class="stat-label">Joy/Fun <span class="stat-num">{{ formatStat(human.needFun) }}%</span></div>
+            <div class="stat-bar-bg">
+              <div class="stat-bar-fill" [style.width.%]="human.needFun"
+                [style.background-color]="getStatBarColor(human.needFun)">
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+</div>
