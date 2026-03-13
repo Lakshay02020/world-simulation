@@ -427,7 +427,7 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         }
 
         this.humanMeshes.forEach(mesh => {
-            if (mesh.geometry) mesh.geometry.dispose();
+            if ((mesh as any).geometry) (mesh as any).geometry.dispose();
             // Notice: We don't dispose material globally if shared, but here we can
         });
     }
