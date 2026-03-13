@@ -216,6 +216,16 @@ export class WorldMapComponent implements OnInit, OnDestroy {
             const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.15 }));
             base.add(line);
 
+            // House/Block Number Sign
+            if (Math.random() > 0.3) {
+                const idString = "UNIT " + Math.floor(Math.random() * 999).toString().padStart(3, '0');
+                // The canvas aspect is 4:1 width:height, scale width to match ratio approx
+                const sign = this.createTextBoard(idString, '#000000', '#ffd93d', depth * 0.6);
+                sign.rotation.y = Math.PI / 2; // Face sideways
+                sign.position.set(width / 2 + 0.1, baseHeight / 2 - 2, 0);
+                base.add(sign);
+            }
+
             // Add a tower / top section 60% of the time to give a structured look
             if (Math.random() > 0.4) {
                 const towerHeight = 10 + Math.random() * 25;
@@ -243,20 +253,66 @@ export class WorldMapComponent implements OnInit, OnDestroy {
 
         // Create explicit Points of Interest
         // Home (10, 10 mapped to -40, -40 on 3D grid)
-        this.createZoneMarker(-40, -40, 0x3d3d5c);
+        this.createMainBuilding(-40, -40, "HOME ZONE", 0x3d3d5c, 15, 12, 15);
         // Factory (80, 20 mapped to 30, -30)
-        this.createZoneMarker(30, -30, 0x5c3d3d);
+        this.createMainBuilding(30, -30, "CYBER FACTORY", 0x5c3d3d, 20, 15, 20);
         // Restaurant (80, 80 mapped to 30, 30)
-        this.createZoneMarker(30, 30, 0x5c523d);
+        this.createMainBuilding(30, 30, "NEON NOODLES", 0x5c523d, 18, 10, 18);
     }
 
-    createZoneMarker(x: number, z: number, color: number) {
-        const g = new THREE.BoxGeometry(10, 0.5, 10);
-        const m = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.5 });
+    createTextBoard(text: string, bgColor: string, txtColor: string, widthScale: number = 8): THREE.Mesh {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d')!;
+
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, 512, 128);
+
+        ctx.strokeStyle = '#00f2fe';
+        ctx.lineWidth = 10;
+        ctx.strokeRect(0, 0, 512, 128);
+
+        ctx.fillStyle = txtColor;
+        ctx.font = 'bold 70px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 256, 64);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const mat = new THREE.MeshBasicMaterial({ map: texture });
+        const geo = new THREE.PlaneGeometry(widthScale, widthScale / 4);
+        return new THREE.Mesh(geo, mat);
+    }
+
+    createMainBuilding(x: number, z: number, label: string, colorHex: number, w: number, h: number, d: number) {
+        const g = new THREE.BoxGeometry(w, h, d);
+        const m = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.7 });
         const mesh = new THREE.Mesh(g, m);
-        mesh.position.set(x, 0.25, z);
+        mesh.position.set(x, h / 2, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        const edges = new THREE.EdgesGeometry(g);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.5 }));
+        mesh.add(line);
+
+        // Add 3D text signboard
+        const sign = this.createTextBoard(label, '#111116', '#00f2fe');
+        // Place it slightly in front of the front face (assuming front is +Z)
+        sign.position.set(0, h / 2 - 2, d / 2 + 0.1);
+        mesh.add(sign);
+
+        // Add a back sign too
+        const signBack = this.createTextBoard(label, '#111116', '#00f2fe');
+        signBack.position.set(0, h / 2 - 2, -d / 2 - 0.1);
+        signBack.rotation.y = Math.PI;
+        mesh.add(signBack);
+
         this.scene.add(mesh);
     }
+
+
 
     update3DScene(data: VirtualHuman[]) {
         // Clean up disconnected humans
