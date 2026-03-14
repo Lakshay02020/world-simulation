@@ -480,11 +480,9 @@ export class WorldMapComponent implements OnInit, OnDestroy {
                 const moveDist = mesh.position.distanceTo(targetPos);
 
                 if (moveDist > 0.05) {
-                    // Mesh's local +Z axis is the front of the body.
-                    // Object3D.lookAt points the local -Z axis towards the target point.
-                    // So we must direct the Object to look at a point directly behind it,
-                    // which causes +Z to point exactly at the target.
-                    const lookPos = mesh.position.clone().multiplyScalar(2).sub(targetPos);
+                    // Object3D.lookAt makes the local +Z axis point directly at the target.
+                    // Since our characters' eyes are natively at +Z, they face forward!
+                    const lookPos = targetPos.clone();
                     lookPos.y = mesh.position.y;
                     mesh.lookAt(lookPos);
                 }
@@ -516,8 +514,8 @@ export class WorldMapComponent implements OnInit, OnDestroy {
                     // Allow the user to "look around" their environment by moving the mouse.
                     // this.mouse.x goes from -1 (left) to 1 (right)
                     // this.mouse.y goes from -1 (bottom) to 1 (top)
-                    const yawOffset = -this.mouse.x * (Math.PI / 1.5); // Look left/right by 120 degrees
-                    const pitchOffset = this.mouse.y * (Math.PI / 3); // Look up/down by 60 degrees
+                    const yawOffset = -this.mouse.x * Math.PI; // Full 360 degrees
+                    const pitchOffset = this.mouse.y * (Math.PI / 2.5); // Look up/down
 
                     const euler = new THREE.Euler(pitchOffset, yawOffset, 0, 'YXZ');
                     const lookDir = forward.clone().applyEuler(euler);
@@ -529,7 +527,9 @@ export class WorldMapComponent implements OnInit, OnDestroy {
             }
         }
 
-        this.controls.update();
+        if (!this.isFirstPerson) {
+            this.controls.update();
+        }
         this.renderer.render(this.scene, this.camera);
     }
 
