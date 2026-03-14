@@ -54,6 +54,13 @@ public class AIAutopilotService {
         }
     }
 
+    private double[] getBuildingAt(double x, double y) {
+        if (Math.hypot(x - 10, y - 10) <= 6.0) return new double[]{10, 10, 10, 16}; // Sleep (10,10) Door (10,16)
+        if (Math.hypot(x - 80, y - 80) <= 6.0) return new double[]{80, 80, 74, 80}; // Eat (80,80) Door (74,80)
+        if (Math.hypot(x - 80, y - 20) <= 6.0) return new double[]{80, 20, 80, 26}; // Work (80,20) Door (80,26)
+        return null;
+    }
+
     private void processHuman(VirtualHuman human, LocalDateTime now, List<Action> allActions) {
         String logPrefix = "Human [" + human.getFirstName() + " " + human.getLastName() + "] : ";
 
@@ -62,14 +69,46 @@ public class AIAutopilotService {
             Action act = human.getCurrentAction();
             
             // --- MOVEMENT LOGIC ---
-            double targetX = 50.0; double targetY = 50.0;
-            if (act.getName().equals("Sleep")) { targetX = 10.0; targetY = 10.0; }
-            else if (act.getName().equals("Eat Basic Meal")) { targetX = 80.0; targetY = 80.0; }
-            else if (act.getName().equals("General Labour")) { targetX = 80.0; targetY = 20.0; }
+            double finalTargetX = 50.0; double finalTargetY = 50.0;
+            if (act.getName().equals("Sleep")) { finalTargetX = 10.0; finalTargetY = 10.0; }
+            else if (act.getName().equals("Eat Basic Meal")) { finalTargetX = 80.0; finalTargetY = 80.0; }
+            else if (act.getName().equals("General Labour")) { finalTargetX = 80.0; finalTargetY = 20.0; }
             else if (act.getName().equals("Wander/Idle")) {
                 int hash = human.getId().hashCode();
-                targetX = 35.0 + (Math.abs(hash) % 30); // Random deterministic X between 35 and 65
-                targetY = 35.0 + (Math.abs(hash / 100) % 30); // Random deterministic Y between 35 and 65
+                finalTargetX = 35.0 + (Math.abs(hash) % 30); // Random deterministic X between 35 and 65
+                finalTargetY = 35.0 + (Math.abs(hash / 100) % 30); // Random deterministic Y between 35 and 65
+            }
+            
+            double targetX = finalTargetX;
+            double targetY = finalTargetY;
+
+            // Enforce building entrances (Doors)
+            double[] currentBuilding = getBuildingAt(human.getCoordinateX(), human.getCoordinateY());
+            double[] destBuilding = getBuildingAt(finalTargetX, finalTargetY);
+
+            boolean isInsideDifferentBuilding = currentBuilding != null && (destBuilding == null || currentBuilding[0] != destBuilding[0] || currentBuilding[1] != destBuilding[1]);
+            
+            if (isInsideDifferentBuilding) {
+                // Must explicitly exit through current building's door first
+                double doorX = currentBuilding[2];
+                double doorY = currentBuilding[3];
+                // If we haven't reached the door yet (are we still inside?)
+                if (Math.hypot(human.getCoordinateX() - doorX, human.getCoordinateY() - doorY) > 1.0) {
+                    targetX = doorX;
+                    targetY = doorY;
+                }
+            } else if (destBuilding != null) {
+                // We are not trapped in a different building. Are we outside the destination building?
+                boolean isOutsideDest = Math.hypot(human.getCoordinateX() - destBuilding[0], human.getCoordinateY() - destBuilding[1]) > 6.0;
+                if (isOutsideDest) {
+                    // Must enter through dest building's door
+                    double doorX = destBuilding[2];
+                    double doorY = destBuilding[3];
+                    if (Math.hypot(human.getCoordinateX() - doorX, human.getCoordinateY() - doorY) > 1.0) {
+                        targetX = doorX;
+                        targetY = doorY;
+                    }
+                }
             }
             
             double dx = targetX - human.getCoordinateX();

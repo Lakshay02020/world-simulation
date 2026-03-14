@@ -227,7 +227,16 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         this.scene.add(gridHelper);
 
         // Generate Buildings (Procedural blocks)
-        // We will leave the center (0,0) relatively open for wandering and place buildings on the edges
+
+        // --- Core Functional Buildings ---
+        // Sleep (10,10) -> -40,-40. Door on +Z
+        this.createSpecificBuilding(-40, -40, 0x1b5e20, "APPARTMENTS", 0, 1);
+        // Eat (80,80) -> 30,30. Door on -X
+        this.createSpecificBuilding(30, 30, 0x3e2723, "NEON NOODLES", -1, 0);
+        // Work (80,20) -> 30,-30. Door on +Z
+        this.createSpecificBuilding(30, -30, 0x2a3b4c, "CORP. HQ", 0, 1);
+
+        // We will leave the rest of the center (0,0) relatively open for wandering and place background buildings
         const buildingMat = new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.4 });
         const highlightMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe, wireframe: true });
 
@@ -244,6 +253,14 @@ export class WorldMapComponent implements OnInit, OnDestroy {
                 x = x > 0 ? x + 50 : x - 50;
                 z = z > 0 ? z + 50 : z - 50;
             }
+
+            // Ensure they don't overlap our 3 functional buildings exactly
+            const avoids = [{ x: -40, z: -40 }, { x: 30, z: 30 }, { x: 30, z: -30 }];
+            let overlaps = false;
+            for (let a of avoids) {
+                if (Math.hypot(x - a.x, z - a.z) < 15) overlaps = true;
+            }
+            if (overlaps) continue;
 
             const width = 6 + Math.random() * 8;
             const depth = 6 + Math.random() * 8;
@@ -360,7 +377,80 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         this.scene.add(mesh);
     }
 
+    createSpecificBuilding(x: number, z: number, colorHex: number, label: string, doorOffsetX: number, doorOffsetZ: number) {
+        const width = 12;
+        const depth = 12;
+        const height = 15;
 
+        const bldgMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.6 });
+        const baseGeo = new THREE.BoxGeometry(width, height, depth);
+        const base = new THREE.Mesh(baseGeo, bldgMat);
+        base.position.set(x, height / 2, z);
+        base.castShadow = true;
+        base.receiveShadow = true;
+        this.scene.add(base);
+
+        // Windows
+        const windowGeo = new THREE.PlaneGeometry(1.5, 2);
+        const windowMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe });
+
+        // Add some windows on all sides avoiding the bottom floor
+        for (let wy = 5; wy < height - 1; wy += 3.5) {
+            for (let wx = -width / 2 + 2; wx < width / 2 - 1; wx += 3) {
+                const win1 = new THREE.Mesh(windowGeo, windowMat);
+                win1.position.set(wx, wy - height / 2, depth / 2 + 0.01);
+                base.add(win1);
+
+                const win2 = new THREE.Mesh(windowGeo, windowMat);
+                win2.position.set(wx, wy - height / 2, -depth / 2 - 0.01);
+                win2.rotation.y = Math.PI;
+                base.add(win2);
+            }
+        }
+        for (let wy = 5; wy < height - 1; wy += 3.5) {
+            for (let wz = -depth / 2 + 2; wz < depth / 2 - 1; wz += 3) {
+                const win1 = new THREE.Mesh(windowGeo, windowMat);
+                win1.position.set(width / 2 + 0.01, wy - height / 2, wz);
+                win1.rotation.y = Math.PI / 2;
+                base.add(win1);
+
+                const win2 = new THREE.Mesh(windowGeo, windowMat);
+                win2.position.set(-width / 2 - 0.01, wy - height / 2, wz);
+                win2.rotation.y = -Math.PI / 2;
+                base.add(win2);
+            }
+        }
+
+        // Door
+        const doorGeo = new THREE.PlaneGeometry(2.5, 4);
+        const doorMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2 });
+        const door = new THREE.Mesh(doorGeo, doorMat);
+
+        // Position door based on offset
+        if (doorOffsetX > 0) {
+            door.position.set(width / 2 + 0.02, 2 - height / 2, 0);
+            door.rotation.y = Math.PI / 2;
+        } else if (doorOffsetX < 0) {
+            door.position.set(-width / 2 - 0.02, 2 - height / 2, 0);
+            door.rotation.y = -Math.PI / 2;
+        } else if (doorOffsetZ > 0) {
+            door.position.set(0, 2 - height / 2, depth / 2 + 0.02);
+        } else if (doorOffsetZ < 0) {
+            door.position.set(0, 2 - height / 2, -depth / 2 - 0.02);
+            door.rotation.y = Math.PI;
+        }
+        base.add(door);
+
+        // Door Frame/Glow
+        const frameGeo = new THREE.EdgesGeometry(doorGeo);
+        const frame = new THREE.LineSegments(frameGeo, new THREE.LineBasicMaterial({ color: 0xffa500, transparent: true, opacity: 0.8 }));
+        door.add(frame);
+
+        // Sign Above Building
+        const sign = this.createTextBoard(label, '#000000', '#00f2fe', depth * 0.8);
+        sign.position.set(x, height + 4, z);
+        this.scene.add(sign);
+    }
 
     update3DScene(data: VirtualHuman[]) {
         // Clean up disconnected humans
