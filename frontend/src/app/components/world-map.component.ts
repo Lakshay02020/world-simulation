@@ -1,6 +1,9 @@
 import { Component, OnInit, OnDestroy, ElementRef, ViewChild, inject } from '@angular/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+// @ts-ignore
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { HumanService, VirtualHuman } from '../services/human.service';
 import { CommonModule } from '@angular/common';
 
@@ -91,10 +94,15 @@ export class WorldMapComponent implements OnInit, OnDestroy {
     private controls!: OrbitControls;
     private raycaster = new THREE.Raycaster();
     private mouse = new THREE.Vector2();
+    private clock = new THREE.Clock();
 
     // Maps to track 3D meshes to their Human IDs 
-    private humanMeshes: Map<string, THREE.Group | THREE.Mesh> = new Map();
+    private humanMeshes: Map<string, THREE.Group | THREE.Mesh | any> = new Map();
     private targetPositions: Map<string, THREE.Vector3> = new Map();
+    private humanMixers: Map<string, THREE.AnimationMixer> = new Map();
+
+    private baseHumanModel: THREE.Group | null = null;
+    private baseAnimations: THREE.AnimationClip[] = [];
 
     private hashCode(s: string): number {
         let hash = 0;
@@ -130,6 +138,20 @@ export class WorldMapComponent implements OnInit, OnDestroy {
 
         // 1. Setup Scene, Camera, Renderer
         this.scene = new THREE.Scene();
+
+        // 0. Load the GLTF soldier model for true humans
+        const loader = new GLTFLoader();
+        loader.load('Soldier.glb', (gltf) => {
+            this.baseHumanModel = gltf.scene as any;
+            this.baseAnimations = gltf.animations;
+
+            this.baseHumanModel!.traverse((o: any) => {
+                if (o.isMesh) {
+                    o.castShadow = true;
+                    o.receiveShadow = true;
+                }
+            });
+        });
         this.scene.background = new THREE.Color(0x0d0f1a);
         this.scene.fog = new THREE.Fog(0x0d0f1a, 50, 200);
 
@@ -360,55 +382,42 @@ export class WorldMapComponent implements OnInit, OnDestroy {
             const newTarget = new THREE.Vector3(targetX, 1, targetZ); // Y=1 so they walk above ground
 
             if (!this.humanMeshes.has(h.id)) {
-                // --- Create new 3D Human with distinct faces and clothes ---
-                const group = new THREE.Group();
+                // Wait until model is loaded
+                if (!this.baseHumanModel) continue;
+
+                // --- Clone GLB Human ---
+                const group = (SkeletonUtils as any).clone(this.baseHumanModel);
                 group.position.copy(newTarget);
-                group.userData = { id: h.id }; // Attach ID for raycaster clicks
+                group.scale.set(1.5, 1.5, 1.5);
+                group.userData = { id: h.id };
 
                 const hash = this.hashCode(h.id);
-                // Random deterministic apparel and skin
-                const skinTones = [0xffcc99, 0x8d5524, 0xc68642, 0xe0ac69, 0xf1c27d];
                 const shirtColors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff, 0xffffff, 0x222222, 0x8844ff];
-                const pantColors = [0x111155, 0x222222, 0x554433, 0x335533, 0xffffff];
-
-                const skinColor = skinTones[Math.abs(hash) % skinTones.length];
                 const shirtColor = shirtColors[Math.abs(hash * 2) % shirtColors.length];
-                const pantColor = pantColors[Math.abs(hash * 3) % pantColors.length];
 
-                const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.4 });
-                const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.8 });
-                const pantMat = new THREE.MeshStandardMaterial({ color: pantColor, roughness: 0.9 });
+                group.traverse((child: any) => {
+                    if (child.isMesh) {
+                        child.userData = { id: h.id };
+                        if (child.name === 'vanguard_Mesh') {
+                            child.material = child.material.clone();
+                            child.material.color.setHex(shirtColor);
+                        }
+                    }
+                });
 
-                // Construct Body Parts
-                const headGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-                const head = new THREE.Mesh(headGeo, skinMat);
-                head.position.y = 1.3 + 0.4;
-                head.castShadow = true;
+                const mixer = new THREE.AnimationMixer(group);
+                this.humanMixers.set(h.id, mixer);
 
-                // Eyes (face)
-                const eyeGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-                const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-                const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-                leftEye.position.set(-0.2, 0.1, 0.41);
-                const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-                rightEye.position.set(0.2, 0.1, 0.41);
-                head.add(leftEye, rightEye);
+                // Play animation
+                // Soldier.glb typically has 0: Idle, 1: Run, 3: Walk
+                // We'll play Walk (3) or fallback to Run (1)
+                const idleAnim = this.baseAnimations[0];
+                const walkAnim = this.baseAnimations.length > 3 ? this.baseAnimations[3] :
+                    this.baseAnimations.length > 1 ? this.baseAnimations[1] : idleAnim;
 
-                const torsoGeo = new THREE.BoxGeometry(0.9, 1.2, 0.5);
-                const torso = new THREE.Mesh(torsoGeo, shirtMat);
-                torso.position.y = 0.6 + 0.6;
-                torso.castShadow = true;
-
-                const legGeo = new THREE.BoxGeometry(0.4, 0.8, 0.4);
-                const leftLeg = new THREE.Mesh(legGeo, pantMat);
-                leftLeg.position.set(-0.25, -0.6 - 0.4, 0); // Relative to Torso
-                leftLeg.castShadow = true;
-                const rightLeg = new THREE.Mesh(legGeo, pantMat);
-                rightLeg.position.set(0.25, -0.6 - 0.4, 0);
-                rightLeg.castShadow = true;
-                torso.add(leftLeg, rightLeg);
-
-                group.add(head, torso);
+                const action = mixer.clipAction(walkAnim);
+                action.play();
+                mixer.timeScale = 0; // Pause by default (standing still)
 
                 // Player Indicator
                 if (h.isPlayerControlled) {
@@ -420,9 +429,9 @@ export class WorldMapComponent implements OnInit, OnDestroy {
                     group.add(marker);
                 }
 
-                // Give them a tiny point light so they glow on the floor!
+                // Glow
                 const glow = new THREE.PointLight(shirtColor, 0.8, 4);
-                glow.position.y = 1;
+                glow.position.y = 1.0;
                 group.add(glow);
 
                 this.scene.add(group);
@@ -473,11 +482,16 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         // Render Loop
         this.animationFrameId = requestAnimationFrame(() => this.animate());
 
+        const delta = this.clock.getDelta();
+        this.humanMixers.forEach((mixer) => mixer.update(delta * 2)); // 2x animation speed to match map traversal speed
+
         // Interpolate characters smoothly between server ticks
         for (const [id, mesh] of this.humanMeshes.entries()) {
             const targetPos = this.targetPositions.get(id);
             if (targetPos) {
                 const moveDist = mesh.position.distanceTo(targetPos);
+
+                const mixer = this.humanMixers.get(id);
 
                 if (moveDist > 0.05) {
                     // Object3D.lookAt makes the local +Z axis point directly at the target.
@@ -485,18 +499,15 @@ export class WorldMapComponent implements OnInit, OnDestroy {
                     const lookPos = targetPos.clone();
                     lookPos.y = mesh.position.y;
                     mesh.lookAt(lookPos);
+                    if (mixer) mixer.timeScale = 1; // Play walk
+                } else {
+                    if (mixer) mixer.timeScale = 0; // Pause walk
                 }
 
                 // Smooth lerp (linear interpolation) towards the target position. 
                 // 0.1 determines the speed/smoothness of the slide.
                 mesh.position.lerp(targetPos, 0.1);
-
-                // Make them "bounce" slightly while moving to simulate walking!
-                if (moveDist > 0.5) {
-                    mesh.position.y = 1 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.5;
-                } else {
-                    mesh.position.y = 1; // Stand still
-                }
+                mesh.position.y = 1; // Keep feet firmly on the target plane Y=1
 
                 // First Person View Camera Update
                 if (this.isFirstPerson && this.selectedHuman && this.selectedHuman.id === id) {
