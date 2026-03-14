@@ -29,7 +29,7 @@ export interface VirtualHuman {
 })
 export class HumanService {
     private http = inject(HttpClient);
-    private apiUrl = 'http://localhost:8080/api/humans'; // Backend exact URL
+    private apiUrl = '/api/humans'; // Relative: works locally (via proxy) and on Vercel (proxied to Render)
 
     getHumans(): Observable<VirtualHuman[]> {
         return this.http.get<VirtualHuman[]>(this.apiUrl);

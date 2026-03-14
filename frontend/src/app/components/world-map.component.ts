@@ -625,29 +625,32 @@ export class WorldMapComponent implements OnInit, OnDestroy {
 
                 // First Person View Camera Update
                 if (this.isFirstPerson && this.selectedHuman && this.selectedHuman.id === id) {
+                    // Hide the character's own body so it doesn't block the view
+                    mesh.visible = false;
+
                     // The face points in +Z local direction. Let's get that world direction.
                     const forward = new THREE.Vector3(0, 0, 1);
                     forward.applyQuaternion(mesh.quaternion);
 
                     const headPos = mesh.position.clone();
-                    headPos.y += 1.7; // Go up to eye level
-                    // Move the camera slightly forward so we don't see the inside of the face
-                    headPos.add(forward.clone().multiplyScalar(0.4));
+                    headPos.y += 1.8; // Eye level (soldier model is ~2 units tall)
+                    // Push camera well forward of the body to clear the head mesh
+                    headPos.add(forward.clone().multiplyScalar(1.5));
 
-                    this.camera.position.lerp(headPos, 0.2); // Smoothly attach camera
+                    this.camera.position.copy(headPos); // Snap directly, no lerp, for clean FPV
 
                     // Allow the user to "look around" their environment by moving the mouse.
-                    // this.mouse.x goes from -1 (left) to 1 (right)
-                    // this.mouse.y goes from -1 (bottom) to 1 (top)
                     const yawOffset = -this.mouse.x * Math.PI; // Full 360 degrees
                     const pitchOffset = this.mouse.y * (Math.PI / 2.5); // Look up/down
 
                     const euler = new THREE.Euler(pitchOffset, yawOffset, 0, 'YXZ');
                     const lookDir = forward.clone().applyEuler(euler);
 
-                    const lookTarget = headPos.clone().add(lookDir.multiplyScalar(5));
-
+                    const lookTarget = headPos.clone().add(lookDir.multiplyScalar(10));
                     this.camera.lookAt(lookTarget);
+                } else {
+                    // Make sure character is visible when NOT in FPV
+                    mesh.visible = true;
                 }
             }
         }
