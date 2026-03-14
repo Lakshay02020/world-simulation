@@ -315,14 +315,6 @@ export class WorldMapComponent implements OnInit, OnDestroy {
                 }
             }
         }
-
-        // Create explicit Points of Interest
-        // Home (10, 10 mapped to -40, -40 on 3D grid)
-        this.createMainBuilding(-40, -40, "HOME ZONE", 0x3d3d5c, 15, 12, 15);
-        // Factory (80, 20 mapped to 30, -30)
-        this.createMainBuilding(30, -30, "CYBER FACTORY", 0x5c3d3d, 20, 15, 20);
-        // Restaurant (80, 80 mapped to 30, 30)
-        this.createMainBuilding(30, 30, "NEON NOODLES", 0x5c523d, 18, 10, 18);
     }
 
     createTextBoard(text: string, bgColor: string, txtColor: string, widthScale: number = 8): THREE.Mesh {
@@ -348,33 +340,6 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         const mat = new THREE.MeshBasicMaterial({ map: texture });
         const geo = new THREE.PlaneGeometry(widthScale, widthScale / 4);
         return new THREE.Mesh(geo, mat);
-    }
-
-    createMainBuilding(x: number, z: number, label: string, colorHex: number, w: number, h: number, d: number) {
-        const g = new THREE.BoxGeometry(w, h, d);
-        const m = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.7 });
-        const mesh = new THREE.Mesh(g, m);
-        mesh.position.set(x, h / 2, z);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-
-        const edges = new THREE.EdgesGeometry(g);
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.5 }));
-        mesh.add(line);
-
-        // Add 3D text signboard
-        const sign = this.createTextBoard(label, '#111116', '#00f2fe');
-        // Place it slightly in front of the front face (assuming front is +Z)
-        sign.position.set(0, h / 2 - 2, d / 2 + 0.1);
-        mesh.add(sign);
-
-        // Add a back sign too
-        const signBack = this.createTextBoard(label, '#111116', '#00f2fe');
-        signBack.position.set(0, h / 2 - 2, -d / 2 - 0.1);
-        signBack.rotation.y = Math.PI;
-        mesh.add(signBack);
-
-        this.scene.add(mesh);
     }
 
     createSpecificBuilding(x: number, z: number, colorHex: number, label: string, doorOffsetX: number, doorOffsetZ: number) {
