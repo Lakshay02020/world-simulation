@@ -421,30 +421,35 @@ export class WorldMapComponent implements OnInit, OnDestroy {
             }
         }
 
-        // Door
-        const doorGeo = new THREE.PlaneGeometry(2.5, 4);
-        const doorMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2 });
+        // Door (Box geometry to pop out slightly to avoid z-fighting and be visible from angles)
+        const doorGeo = new THREE.BoxGeometry(3, 4.5, 0.4);
+        const doorMat = new THREE.MeshStandardMaterial({ color: 0x050505, metalness: 0.9, roughness: 0.1 });
         const door = new THREE.Mesh(doorGeo, doorMat);
 
         // Position door based on offset
         if (doorOffsetX > 0) {
-            door.position.set(width / 2 + 0.02, 2 - height / 2, 0);
+            door.position.set(width / 2, 2.25 - height / 2, 0);
             door.rotation.y = Math.PI / 2;
         } else if (doorOffsetX < 0) {
-            door.position.set(-width / 2 - 0.02, 2 - height / 2, 0);
+            door.position.set(-width / 2, 2.25 - height / 2, 0);
             door.rotation.y = -Math.PI / 2;
         } else if (doorOffsetZ > 0) {
-            door.position.set(0, 2 - height / 2, depth / 2 + 0.02);
+            door.position.set(0, 2.25 - height / 2, depth / 2);
         } else if (doorOffsetZ < 0) {
-            door.position.set(0, 2 - height / 2, -depth / 2 - 0.02);
+            door.position.set(0, 2.25 - height / 2, -depth / 2);
             door.rotation.y = Math.PI;
         }
         base.add(door);
 
         // Door Frame/Glow
         const frameGeo = new THREE.EdgesGeometry(doorGeo);
-        const frame = new THREE.LineSegments(frameGeo, new THREE.LineBasicMaterial({ color: 0xffa500, transparent: true, opacity: 0.8 }));
+        const frame = new THREE.LineSegments(frameGeo, new THREE.LineBasicMaterial({ color: 0xffa500 }));
         door.add(frame);
+
+        // Add a bright light right above the door
+        const doorLight = new THREE.PointLight(0xffa500, 2, 10);
+        doorLight.position.set(0, 3, 0.5); // Relative to the door
+        door.add(doorLight);
 
         // Sign Above Building
         const sign = this.createTextBoard(label, '#000000', '#00f2fe', depth * 0.8);
