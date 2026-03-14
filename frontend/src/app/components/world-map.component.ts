@@ -494,11 +494,13 @@ export class WorldMapComponent implements OnInit, OnDestroy {
                 const mixer = this.humanMixers.get(id);
 
                 if (moveDist > 0.05) {
-                    // Object3D.lookAt makes the local +Z axis point directly at the target.
-                    // Since our characters' eyes are natively at +Z, they face forward!
-                    const lookPos = targetPos.clone();
+                    // Object3D.lookAt points the local -Z axis towards the target point.
+                    // The GLTF Soldier model natively points its face along +Z. 
+                    // So we look directly backward to point the face forward.
+                    const lookPos = mesh.position.clone().multiplyScalar(2).sub(targetPos);
                     lookPos.y = mesh.position.y;
                     mesh.lookAt(lookPos);
+
                     if (mixer) mixer.timeScale = 1; // Play walk
                 } else {
                     if (mixer) mixer.timeScale = 0; // Pause walk
