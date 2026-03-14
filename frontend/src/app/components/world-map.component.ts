@@ -347,7 +347,11 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         const depth = 12;
         const height = 15;
 
-        const bldgMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.6 });
+        const bldgMat = new THREE.MeshStandardMaterial({
+            color: colorHex,
+            roughness: 0.6,
+            side: THREE.DoubleSide
+        });
         const baseGeo = new THREE.BoxGeometry(width, height, depth);
         const base = new THREE.Mesh(baseGeo, bldgMat);
         base.position.set(x, height / 2, z);
@@ -415,6 +419,41 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         const doorLight = new THREE.PointLight(0xffa500, 2, 10);
         doorLight.position.set(0, 3, 0.5); // Relative to the door
         door.add(doorLight);
+
+        // Interior Ambient Light
+        const intLight = new THREE.PointLight(0xffffff, 0.5, 30);
+        intLight.position.set(0, 0, 0); // Heart of the room
+        base.add(intLight);
+
+        // --- Interior Furniture Layouts ---
+        if (label === 'APPARTMENTS') {
+            const bedMat = new THREE.MeshStandardMaterial({ color: 0x444488, roughness: 0.9 });
+            const bedGeo = new THREE.BoxGeometry(4, 1, 6);
+            const bed = new THREE.Mesh(bedGeo, bedMat);
+            // Center is exactly where they sleep (-40, -40), so place bed at center floor
+            bed.position.set(0, 0.5 - height / 2, 0);
+            base.add(bed);
+        } else if (label === 'NEON NOODLES') {
+            // Eat target is scattered around, building center is 30, 30.
+            const tableMat = new THREE.MeshStandardMaterial({ color: 0x882211, roughness: 0.5 });
+            const tableGeo = new THREE.CylinderGeometry(1.5, 1.5, 1.5, 16);
+            for (let tx = -3; tx <= 3; tx += 6) {
+                for (let tz = -3; tz <= 3; tz += 6) {
+                    const table = new THREE.Mesh(tableGeo, tableMat);
+                    table.position.set(tx, 0.75 - height / 2, tz);
+                    base.add(table);
+                }
+            }
+        } else if (label === 'CORP. HQ') {
+            // Work target is scattered around, building center is 30, -30.
+            const deskMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3 });
+            const deskGeo = new THREE.BoxGeometry(8, 1.5, 2);
+            for (let tz = -3; tz <= 3; tz += 6) {
+                const desk = new THREE.Mesh(deskGeo, deskMat);
+                desk.position.set(0, 0.75 - height / 2, tz);
+                base.add(desk);
+            }
+        }
 
         // Sign Above Building
         const sign = this.createTextBoard(label, '#000000', '#00f2fe', depth * 0.8);
