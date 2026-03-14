@@ -559,16 +559,29 @@ export class WorldMapComponent implements OnInit, OnDestroy {
                     // So we look directly backward to point the face forward.
                     const lookPos = mesh.position.clone().multiplyScalar(2).sub(targetPos);
                     lookPos.y = mesh.position.y;
+
+                    // Smooth turn rotation
+                    const currentRot = mesh.quaternion.clone();
                     mesh.lookAt(lookPos);
+                    const targetRot = mesh.quaternion.clone();
+                    mesh.quaternion.copy(currentRot);
+                    mesh.quaternion.slerp(targetRot, 10 * delta);
 
                     if (mixer) mixer.timeScale = 1; // Play walk
                 } else {
                     if (mixer) mixer.timeScale = 0; // Pause walk
                 }
 
-                // Smooth lerp (linear interpolation) towards the target position. 
-                // 0.1 determines the speed/smoothness of the slide.
-                mesh.position.lerp(targetPos, 0.1);
+                // Smooth linear movement towards target matching the backend speed.
+                // Backend travels at 2.0 units per second, so we interpolate smoothly at 2.2 units/second
+                // to slightly overlap and eliminate stopping latency jitter.
+                const speed = 2.2;
+                if (moveDist < speed * delta) {
+                    mesh.position.copy(targetPos);
+                } else {
+                    const dir = targetPos.clone().sub(mesh.position).normalize();
+                    mesh.position.add(dir.multiplyScalar(speed * delta));
+                }
                 mesh.position.y = 1; // Keep feet firmly on the target plane Y=1
 
                 // First Person View Camera Update

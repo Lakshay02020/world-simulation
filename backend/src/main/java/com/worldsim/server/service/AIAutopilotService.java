@@ -69,14 +69,30 @@ public class AIAutopilotService {
             Action act = human.getCurrentAction();
             
             // --- MOVEMENT LOGIC ---
+            // --- MOVEMENT LOGIC ---
             double finalTargetX = 50.0; double finalTargetY = 50.0;
-            if (act.getName().equals("Sleep")) { finalTargetX = 10.0; finalTargetY = 10.0; }
-            else if (act.getName().equals("Eat Basic Meal")) { finalTargetX = 80.0; finalTargetY = 80.0; }
-            else if (act.getName().equals("General Labour")) { finalTargetX = 80.0; finalTargetY = 20.0; }
+            long timeCycle = System.currentTimeMillis() / 5000; // Changes every 5 seconds
+            int hash = human.getId().hashCode() + (int) timeCycle;
+
+            if (act.getName().equals("Sleep")) { 
+                // Stay still in bed
+                finalTargetX = 10.0; finalTargetY = 10.0; 
+            }
+            else if (act.getName().equals("Eat Basic Meal")) { 
+                // Wander around tables
+                finalTargetX = 76.0 + (Math.abs(hash) % 8); 
+                finalTargetY = 76.0 + ((Math.abs(hash) / 10) % 8); 
+            }
+            else if (act.getName().equals("General Labour")) { 
+                // Move around machinery
+                finalTargetX = 76.0 + (Math.abs(hash) % 8); 
+                finalTargetY = 16.0 + ((Math.abs(hash) / 10) % 8); 
+            }
             else if (act.getName().equals("Wander/Idle")) {
-                int hash = human.getId().hashCode();
-                finalTargetX = 35.0 + (Math.abs(hash) % 30); // Random deterministic X between 35 and 65
-                finalTargetY = 35.0 + (Math.abs(hash / 100) % 30); // Random deterministic Y between 35 and 65
+                long slowCycle = System.currentTimeMillis() / 15000; // Changes every 15 seconds
+                int slowHash = human.getId().hashCode() + (int) slowCycle;
+                finalTargetX = 20.0 + (Math.abs(slowHash) % 60); // Very wide wandering area (20 to 80)
+                finalTargetY = 20.0 + ((Math.abs(slowHash) / 100) % 60);
             }
             
             double targetX = finalTargetX;
