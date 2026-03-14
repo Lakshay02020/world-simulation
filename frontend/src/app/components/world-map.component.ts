@@ -14,7 +14,7 @@ import { CommonModule } from '@angular/common';
       
       <!-- Selected Human Info Panel -->
       <div class="info-panel glass-panel" *ngIf="selectedHuman">
-        <button class="close-btn" (click)="selectedHuman = null">×</button>
+        <button class="close-btn" (click)="closeHumanPanel()">×</button>
         <div class="panel-header">
            <h3>{{ selectedHuman.firstName }} {{ selectedHuman.lastName }}</h3>
            <div class="badge">{{ selectedHuman.isPlayerControlled ? 'Player' : 'AI' }}</div>
@@ -32,6 +32,10 @@ import { CommonModule } from '@angular/common';
            <div>Joy: {{ formatStat(selectedHuman.needFun) }}%</div>
            <div>Social: {{ formatStat(selectedHuman.needSocial) }}%</div>
         </div>
+        
+        <button class="fpv-btn" (click)="toggleFirstPerson()">
+             {{ isFirstPerson ? 'Exit POV' : 'See Through Eyes' }}
+        </button>
       </div>
     </div>
   `,
@@ -47,6 +51,8 @@ import { CommonModule } from '@angular/common';
     .action-status { margin-bottom: 15px; font-size: 0.9rem; color: var(--text-muted); }
     .highlight { color: var(--primary); font-size: 1.1rem; font-weight: bold; }
     .stats-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85rem; color: var(--text-main); }
+    .fpv-btn { width: 100%; margin-top: 15px; padding: 10px; background: #00f2fe; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; transition: 0.2s; }
+    .fpv-btn:hover { background: #fff; box-shadow: 0 0 10px #00f2fe; }
   `]
 })
 export class WorldMapComponent implements OnInit, OnDestroy {
@@ -58,6 +64,25 @@ export class WorldMapComponent implements OnInit, OnDestroy {
 
     public humans: VirtualHuman[] = [];
     public selectedHuman: VirtualHuman | null = null;
+    public isFirstPerson: boolean = false;
+
+    closeHumanPanel() {
+        this.selectedHuman = null;
+        if (this.isFirstPerson) this.toggleFirstPerson();
+    }
+
+    toggleFirstPerson() {
+        this.isFirstPerson = !this.isFirstPerson;
+        if (!this.isFirstPerson) {
+            // Restore orbit controls
+            this.controls.enabled = true;
+            this.camera.position.set(50, 60, 50);
+            this.controls.target.set(0, 0, 0);
+        } else {
+            // Disable orbit controls while in FPV
+            this.controls.enabled = false;
+        }
+    }
 
     // THREE.js Variables
     private scene!: THREE.Scene;
@@ -148,6 +173,7 @@ export class WorldMapComponent implements OnInit, OnDestroy {
 
         // 5. Interaction (Clicking characters)
         this.renderer.domElement.addEventListener('pointerup', (e) => this.onMouseClick(e), false);
+        this.renderer.domElement.addEventListener('pointermove', (e) => this.onPointerMove(e), false);
 
         // 6. Start Render Loop
         this.animate();
@@ -409,12 +435,17 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         }
     }
 
-    onMouseClick(event: PointerEvent) {
-        // Calculate mouse position in normalized device coordinates (-1 to +1)
+    onPointerMove(event: PointerEvent) {
+        if (!this.canvasContainer) return;
         const container = this.canvasContainer.nativeElement as HTMLElement;
         const rect = container.getBoundingClientRect();
         this.mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
         this.mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+    }
+
+    onMouseClick(event: PointerEvent) {
+        // Calculate mouse position in normalized device coordinates (-1 to +1)
+        this.onPointerMove(event);
 
         // Raycast from camera to scene
         this.raycaster.setFromCamera(this.mouse, this.camera);
@@ -446,15 +477,54 @@ export class WorldMapComponent implements OnInit, OnDestroy {
         for (const [id, mesh] of this.humanMeshes.entries()) {
             const targetPos = this.targetPositions.get(id);
             if (targetPos) {
+                const moveDist = mesh.position.distanceTo(targetPos);
+
+                if (moveDist > 0.05) {
+                    // Mesh's local +Z axis is the front of the body.
+                    // Object3D.lookAt points the local -Z axis towards the target point.
+                    // So we must direct the Object to look at a point directly behind it,
+                    // which causes +Z to point exactly at the target.
+                    const lookPos = mesh.position.clone().multiplyScalar(2).sub(targetPos);
+                    lookPos.y = mesh.position.y;
+                    mesh.lookAt(lookPos);
+                }
+
                 // Smooth lerp (linear interpolation) towards the target position. 
                 // 0.1 determines the speed/smoothness of the slide.
                 mesh.position.lerp(targetPos, 0.1);
 
                 // Make them "bounce" slightly while moving to simulate walking!
-                if (mesh.position.distanceTo(targetPos) > 0.5) {
+                if (moveDist > 0.5) {
                     mesh.position.y = 1 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.5;
                 } else {
                     mesh.position.y = 1; // Stand still
+                }
+
+                // First Person View Camera Update
+                if (this.isFirstPerson && this.selectedHuman && this.selectedHuman.id === id) {
+                    // The face points in +Z local direction. Let's get that world direction.
+                    const forward = new THREE.Vector3(0, 0, 1);
+                    forward.applyQuaternion(mesh.quaternion);
+
+                    const headPos = mesh.position.clone();
+                    headPos.y += 1.7; // Go up to eye level
+                    // Move the camera slightly forward so we don't see the inside of the face
+                    headPos.add(forward.clone().multiplyScalar(0.4));
+
+                    this.camera.position.lerp(headPos, 0.2); // Smoothly attach camera
+
+                    // Allow the user to "look around" their environment by moving the mouse.
+                    // this.mouse.x goes from -1 (left) to 1 (right)
+                    // this.mouse.y goes from -1 (bottom) to 1 (top)
+                    const yawOffset = -this.mouse.x * (Math.PI / 1.5); // Look left/right by 120 degrees
+                    const pitchOffset = this.mouse.y * (Math.PI / 3); // Look up/down by 60 degrees
+
+                    const euler = new THREE.Euler(pitchOffset, yawOffset, 0, 'YXZ');
+                    const lookDir = forward.clone().applyEuler(euler);
+
+                    const lookTarget = headPos.clone().add(lookDir.multiplyScalar(5));
+
+                    this.camera.lookAt(lookTarget);
                 }
             }
         }
